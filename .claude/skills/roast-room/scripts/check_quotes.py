@@ -20,12 +20,9 @@ from pathlib import Path
 
 BRAINS = Path(__file__).resolve().parents[1] / "brains"
 
-# an opening quote at the start of a line or after a space or bracket, the quoted text (which may
-# itself hold quote marks), a closing quote, then a source id within 40 characters,
-# e.g. "..." (S095) or "..." [S048, 2026]
-QUOTE = re.compile(r"""(?:^|(?<=[\s(\[:*_]))["“](.{20,400}?)["”][^\n"“”]{0,40}?[(\[]S\d{3}""", re.M)
-# an opening quote inside a match, where a later quote may start
-INNER_OPEN = re.compile(r"""(?<=\s)["“]""")
+# a closing quote, then a source id within 40 characters, e.g. "..." (S095), "..." [S048, 2026]
+# or "..." (Lead magnets, S112)
+CLOSE_THEN_ID = re.compile(r"""["”](?=[^\n"“”]{0,40}?[(\[](?:[^()\[\]\n"“”]{0,30}?,\s*)?S\d{3})""")
 
 
 def norm(s):
@@ -36,19 +33,50 @@ def norm(s):
     return re.sub(r"\s+", " ", s).strip()
 
 
-def candidates(q):
-    """The whole match, then each tail that starts at an inner opening quote.
+def is_open(line, i):
+    """Whether the quote mark at line[i] opens a quote (curly marks say so; straight ones by context)."""
+    ch = line[i]
+    if ch in "“”":
+        return ch == "“"
+    nxt = line[i + 1] if i + 1 < len(line) else " "
+    prev = line[i - 1] if i > 0 else " "
+    return not nxt.isspace() and not (prev.isalnum() or prev in ".!?")
 
-    The tails cover a line like: he said "a b c d" and then "the real quote" (S001), where
-    the match starts at the first quote and runs to the end of the second.
+
+def quote_ending_at(line, end):
+    """The text of the quote whose closing mark is line[end], or None.
+
+    Scans back to the line start. The quote opens at the matching opening mark, so a nested quote
+    ("big, "easy" decisions") stays inside it and an earlier, separate quote stays out of it.
+    An opening mark before that which never closes encloses the quote, so the quote widens to it.
     """
-    yield q
-    for m in INNER_OPEN.finditer(q):
-        yield q[m.end():]
+    depth, start = 1, None
+    for i in range(end - 1, -1, -1):
+        if line[i] not in '"“”':
+            continue
+        if not is_open(line, i):
+            depth += 1
+            continue
+        depth -= 1
+        if start is None and depth == 0:
+            start = i + 1
+        elif depth < 0:
+            start, depth = i + 1, 0
+    if start is None:
+        return None
+    return line[start:end]
 
 
 def find_quotes(text):
-    return [m.group(1) for m in QUOTE.finditer(text)]
+    quotes = []
+    for line in text.split("\n"):
+        for m in CLOSE_THEN_ID.finditer(line):
+            if is_open(line, m.start()):
+                continue
+            q = quote_ending_at(line, m.start())
+            if q is not None and 20 <= len(q) <= 400:
+                quotes.append(q)
+    return quotes
 
 
 def check(session, brains=BRAINS):
@@ -61,15 +89,15 @@ def check(session, brains=BRAINS):
     for f in session_files:
         text = f.read_text(encoding="utf-8", errors="replace")
         for q in find_quotes(text):
-            forms = [(c, norm(c)) for c in candidates(q)]
-            forms = [(c, n) for c, n in forms if len(n.split()) >= 6]
-            if any(n in brain_text for _, n in forms):
+            nq = norm(q)
+            if len(nq.split()) < 6:
+                continue
+            if nq in brain_text:
                 ok += 1
-            elif any(n in seen_session or n in brief for _, n in forms):
+            elif nq in seen_session or nq in brief:
                 internal += 1
-            elif forms and len(norm(list(candidates(q))[-1]).split()) >= 6:
-                # flag it only when the quote right before the source id is long enough to check
-                bad.append((f.name, forms[-1][0]))
+            else:
+                bad.append((f.name, q))
         seen_session += " " + norm(text)
     return ok, internal, bad
 
