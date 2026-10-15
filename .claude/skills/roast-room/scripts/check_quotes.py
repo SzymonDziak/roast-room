@@ -40,7 +40,8 @@ def is_open(line, i):
         return ch == "“"
     nxt = line[i + 1] if i + 1 < len(line) else " "
     prev = line[i - 1] if i > 0 else " "
-    return not nxt.isspace() and not (prev.isalnum() or prev in ".!?")
+    # a mark right before "(" or "[" closes a quote, as in get,"(S011)
+    return not nxt.isspace() and nxt not in "([" and not (prev.isalnum() or prev in ".!?")
 
 
 def quote_ending_at(line, end):

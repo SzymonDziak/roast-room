@@ -91,6 +91,10 @@ class CheckQuotesTest(unittest.TestCase):
         )
         self.assertEqual((ok, bad), (1, []))
 
+    def test_comma_then_quote_then_id_with_no_space(self):
+        _, _, bad = self.run_check(['"Always raise the biggest round you possibly can get,"(S011)'])
+        self.assertEqual(len(bad), 1)
+
     def test_short_quotes_are_skipped(self):
         ok, internal, bad = self.run_check(['"Day 2 is stasis, friends." (S064)'])
         self.assertEqual((ok, internal, bad), (0, 0, []))
