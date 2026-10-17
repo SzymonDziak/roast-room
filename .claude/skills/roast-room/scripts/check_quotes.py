@@ -12,7 +12,9 @@ same session) or an invented quote (flag it and remove it from the verdict).
 Exit code 1 if any quote is unaccounted for.
 
 Quotes may hold nested quote marks, like "Stick with big, "easy" decisions ..." (S090),
-and any mix of straight, curly, single and double quote marks.
+and any mix of straight, curly, single and double quote marks. A quote shortened with an ellipsis
+("The biggest mistakes... are the mistakes of omission") verifies when its pieces appear in order,
+each within a short gap of the one before.
 """
 import re
 import sys
@@ -23,6 +25,12 @@ BRAINS = Path(__file__).resolve().parents[1] / "brains"
 # a closing quote, then a source id within 40 characters, e.g. "..." (S095), "..." [S048, 2026]
 # or "..." (Lead magnets, S112)
 CLOSE_THEN_ID = re.compile(r"""["”](?=[^\n"“”]{0,40}?[(\[](?:[^()\[\]\n"“”]{0,30}?,\s*)?S\d{3})""")
+# "...", "…" or "[...]" marks words left out of a quote
+ELLIPSIS = re.compile(r"\[?(?:\.\.\.|…)\]?")
+# the most normalized characters an ellipsis may stand for
+GAP = 300
+# each piece of a shortened quote must have this many words, so "The ... of ... the" proves nothing
+MIN_PIECE_WORDS = 3
 
 
 def norm(s):
@@ -80,6 +88,28 @@ def find_quotes(text):
     return quotes
 
 
+def in_text(quote, hay):
+    """Whether the quote is in the normalized text hay, allowing for ellipses."""
+    parts = [f" {p} " for p in (norm(x) for x in ELLIPSIS.split(quote)) if p]
+    if len(parts) <= 1:
+        return norm(quote) in hay
+    if any(len(p.split()) < MIN_PIECE_WORDS for p in parts):
+        return False
+    hay = f" {hay} "
+    i = hay.find(parts[0])
+    while i != -1:
+        pos = i + len(parts[0]) - 1
+        for p in parts[1:]:
+            j = hay.find(p, pos)
+            if j == -1 or j - pos > GAP:
+                break
+            pos = j + len(p) - 1
+        else:
+            return True
+        i = hay.find(parts[0], i + 1)
+    return False
+
+
 def check(session, brains=BRAINS):
     session = Path(session)
     brain_text = norm(" ".join(p.read_text(encoding="utf-8", errors="replace") for p in Path(brains).rglob("*.md")))
@@ -93,9 +123,9 @@ def check(session, brains=BRAINS):
             nq = norm(q)
             if len(nq.split()) < 6:
                 continue
-            if nq in brain_text:
+            if in_text(q, brain_text):
                 ok += 1
-            elif nq in seen_session or nq in brief:
+            elif in_text(q, seen_session) or in_text(q, brief):
                 internal += 1
             else:
                 bad.append((f.name, q))

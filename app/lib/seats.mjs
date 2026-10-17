@@ -74,6 +74,35 @@ function quoteEndingAt(line, end) {
   return start === null ? null : line.slice(start, end);
 }
 /** Quotes the seat attributed to a source id, each marked verified or not. */
+// "...", "…" or "[...]" marks words left out of a quote; GAP is the most normalized characters it may stand for
+const ELLIPSIS = /\[?(?:\.\.\.|…)\]?/;
+const GAP = 300;
+// each piece of a shortened quote must have this many words, so "The ... of ... the" proves nothing
+const MIN_PIECE_WORDS = 3;
+
+// Whether the quote is in the normalized text hay. A quote with ellipses verifies when its pieces
+// appear in order, as whole words, each within GAP of the one before, and each is MIN_PIECE_WORDS long.
+function inText(quote, hay) {
+  const parts = quote.split(ELLIPSIS).map(norm).filter(Boolean).map((p) => ` ${p} `);
+  if (parts.length <= 1) {
+    const q = norm(quote);
+    return hay.includes(q) || hay.replace(/ /g, "").includes(q.replace(/ /g, ""));
+  }
+  if (parts.some((p) => p.trim().split(" ").length < MIN_PIECE_WORDS)) return false;
+  const padded = ` ${hay} `;
+  for (let i = padded.indexOf(parts[0]); i !== -1; i = padded.indexOf(parts[0], i + 1)) {
+    let pos = i + parts[0].length - 1;
+    let ok = true;
+    for (const p of parts.slice(1)) {
+      const j = padded.indexOf(p, pos);
+      if (j === -1 || j - pos > GAP) { ok = false; break; }
+      pos = j + p.length - 1;
+    }
+    if (ok) return true;
+  }
+  return false;
+}
+
 export function checkQuotes(key, text) {
   const out = [];
   const hay = brainNorm(key);
@@ -84,7 +113,7 @@ export function checkQuotes(key, text) {
       if (quote === null || quote.length < 20 || quote.length > 400) continue;
       const q = norm(quote);
       if (q.split(" ").length < 5) continue;
-      out.push({ quote, source: m[1], verified: hay.includes(q) || hay.replace(/ /g, "").includes(q.replace(/ /g, "")) });
+      out.push({ quote, source: m[1], verified: inText(quote, hay) });
     }
   }
   return out;

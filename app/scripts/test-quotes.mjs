@@ -30,3 +30,14 @@ test("an earlier separate quote stays out; an invented lead-in stays in", () => 
   const lead = one("buffett", `"Totally invented opening words here. "${STICK}" (S090)`);
   assert.equal(lead[0][2], false);
 });
+
+test("a quote shortened with an ellipsis verifies; pieces out of order do not", () => {
+  const short = "The biggest mistakes... they're the mistakes of omission rather than commission";
+  assert.equal(one("buffett", `"${short}" (S028)`)[0][2], true);
+  const swapped = "the mistakes of omission rather than commission... The biggest mistakes";
+  assert.equal(one("buffett", `"${swapped}" (S028)`)[0][2], false);
+  const changed = "The biggest mistakes... are the mistakes of omission rather than commission";
+  assert.equal(one("buffett", `"${changed}" (S028)`)[0][2], false);
+  assert.equal(one("buffett", `"The ... of ... the ... is ... a" (S028)`)[0]?.[2] ?? false, false);
+  assert.equal(one("buffett", `"we always the ... the ... and ... to ... of the" (S028)`)[0][2], false);
+});

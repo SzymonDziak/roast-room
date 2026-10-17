@@ -9,8 +9,10 @@ import check_quotes  # noqa: E402
 
 BRAIN = """
 - "Stick with big, “easy” decisions and eschew activity." (S090)
+- filler - filler - filler - filler - filler - filler - filler - filler - filler - filler - filler - filler - filler - filler - filler - filler - filler - filler - filler - filler - filler - filler - filler - filler - filler - filler - filler - filler - filler - filler - filler - filler - filler - filler - filler - filler - filler - filler - filler - filler - filler - filler - filler - filler - filler - filler - filler - filler - filler - filler - filler - filler - filler - filler - filler - filler - filler - filler - filler - filler 
 - "We can afford to lose money but we can't afford to lose reputation." (S028)
 - "Make something people want, and the rest mostly follows from that." (S092)
+- "the biggest mistakes are the ones that actually don't show up they're the mistakes of omission rather than commission" (S028)
 """
 
 
@@ -98,6 +100,29 @@ class CheckQuotesTest(unittest.TestCase):
     def test_short_quotes_are_skipped(self):
         ok, internal, bad = self.run_check(['"Day 2 is stasis, friends." (S064)'])
         self.assertEqual((ok, internal, bad), (0, 0, []))
+
+    def test_quote_shortened_with_ellipsis_verifies(self):
+        for mark in ["...", "…", " [...] "]:
+            ok, _, bad = self.run_check([f'"The biggest mistakes{mark}they\'re the mistakes of omission rather than commission" (S028)'])
+            self.assertEqual((ok, bad), (1, []), mark)
+
+    def test_ellipsis_pieces_out_of_order_or_far_apart_are_flagged(self):
+        _, _, bad = self.run_check(['"Mistakes of omission rather than commission... the biggest mistakes" (S028)'])
+        self.assertEqual(len(bad), 1)
+        _, _, bad = self.run_check(['"Stick with big, easy decisions... the mistakes of omission rather than commission" (S090)'])
+        self.assertEqual(len(bad), 1)
+
+    def test_ellipsis_does_not_excuse_changed_words(self):
+        _, _, bad = self.run_check(['"The biggest mistakes... are the mistakes of omission rather than commission" (S028)'])
+        self.assertEqual(len(bad), 1)
+
+    def test_ellipsis_pieces_of_filler_words_are_flagged(self):
+        _, _, bad = self.run_check(['"The mistakes ... of ... the mistakes of omission rather" (S028)'])
+        self.assertEqual(len(bad), 1)
+
+    def test_ellipsis_piece_must_be_whole_words(self):
+        _, _, bad = self.run_check(['"The biggest mis... the mistakes of omission rather than commission" (S028)'])
+        self.assertEqual(len(bad), 1)
 
 
 if __name__ == "__main__":
