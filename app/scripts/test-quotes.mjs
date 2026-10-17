@@ -41,3 +41,12 @@ test("a quote shortened with an ellipsis verifies; pieces out of order do not", 
   assert.equal(one("buffett", `"The ... of ... the ... is ... a" (S028)`)[0]?.[2] ?? false, false);
   assert.equal(one("buffett", `"we always the ... the ... and ... to ... of the" (S028)`)[0][2], false);
 });
+
+test("a quote of the brief or an earlier round is marked context, not invented", () => {
+  const founder = "competitors with funding will outspend us, so we raise now";
+  const r = checkQuotes("buffett", `"${founder}" (S031)`, `Founder's lean: "${founder}".`);
+  assert.equal(r[0].verified, false);
+  assert.equal(r[0].context, true);
+  assert.equal(checkQuotes("buffett", `"${founder}" (S031)`)[0].context, false);
+  assert.equal(checkQuotes("buffett", `"${STICK}" (S090)`, STICK)[0].context, false);
+});

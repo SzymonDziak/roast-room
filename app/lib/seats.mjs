@@ -103,9 +103,14 @@ function inText(quote, hay) {
   return false;
 }
 
-export function checkQuotes(key, text) {
+/**
+ * `context` is what the seat may quote besides its brain: the brief and earlier rounds. A quote found
+ * there but not in the brain is marked `context: true` (quoting the founder or a seat, not the expert).
+ */
+export function checkQuotes(key, text, context = "") {
   const out = [];
   const hay = brainNorm(key);
+  const ctx = norm(context);
   for (const line of text.split("\n")) {
     for (const m of line.matchAll(CLOSE_THEN_ID)) {
       if (isOpen(line, m.index)) continue;
@@ -113,7 +118,8 @@ export function checkQuotes(key, text) {
       if (quote === null || quote.length < 20 || quote.length > 400) continue;
       const q = norm(quote);
       if (q.split(" ").length < 5) continue;
-      out.push({ quote, source: m[1], verified: inText(quote, hay) });
+      const verified = inText(quote, hay);
+      out.push({ quote, source: m[1], verified, context: !verified && Boolean(ctx) && inText(quote, ctx) });
     }
   }
   return out;
