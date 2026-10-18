@@ -50,3 +50,13 @@ test("a quote of the brief or an earlier round is marked context, not invented",
   assert.equal(checkQuotes("buffett", `"${founder}" (S031)`)[0].context, false);
   assert.equal(checkQuotes("buffett", `"${STICK}" (S090)`, STICK)[0].context, false);
 });
+
+test("a real line under the wrong source id is flagged with the right id", () => {
+  const r = checkQuotes("buffett", `"${STICK}" (S028)`)[0];
+  assert.equal(r.verified, false);
+  assert.deepEqual(r.citedAs, ["S090"]);
+  assert.equal(checkQuotes("buffett", `"${STICK}" (S090)`)[0].citedAs, null);
+  for (const cite of ["(S090, S028)", "(S028, S090)", "[S090; S028]", "(S028 and S090)"]) {
+    assert.equal(checkQuotes("buffett", `"${STICK}" ${cite}`)[0].verified, true, cite);
+  }
+});

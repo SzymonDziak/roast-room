@@ -14,7 +14,8 @@ Exit code 1 if any quote is unaccounted for.
 Quotes may hold nested quote marks, like "Stick with big, "easy" decisions ..." (S090),
 and any mix of straight, curly, single and double quote marks. A quote shortened with an ellipsis
 ("The biggest mistakes... are the mistakes of omission") verifies when its pieces appear in order,
-each within a short gap of the one before.
+each within a short gap of the one before. A quote must also be in a brain line that cites the same
+source id; a real line credited to the wrong source is flagged.
 """
 import re
 import sys
@@ -24,7 +25,10 @@ BRAINS = Path(__file__).resolve().parents[1] / "brains"
 
 # a closing quote, then a source id within 40 characters, e.g. "..." (S095), "..." [S048, 2026]
 # or "..." (Lead magnets, S112)
-CLOSE_THEN_ID = re.compile(r"""["”](?=[^\n"“”]{0,40}?[(\[](?:[^()\[\]\n"“”]{0,30}?,\s*)?S\d{3})""")
+CLOSE_THEN_ID = re.compile(r"""["”](?=[^\n"“”]{0,40}?[(\[](?:[^()\[\]\n"“”]{0,30}?,\s*)?(S\d{3}))""")
+SOURCE_ID = re.compile(r"S\d{3}")
+# the citation after a closing quote mark: everything up to its closing bracket
+CITATION = re.compile(r"""[^\n"“”]{0,40}?[(\[][^()\[\]\n]{0,80}""")
 # "...", "…" or "[...]" marks words left out of a quote
 ELLIPSIS = re.compile(r"\[?(?:\.\.\.|…)\]?")
 # the most normalized characters an ellipsis may stand for
@@ -84,7 +88,8 @@ def find_quotes(text):
                 continue
             q = quote_ending_at(line, m.start())
             if q is not None and 20 <= len(q) <= 400:
-                quotes.append(q)
+                cite = CITATION.match(line, m.end())
+                quotes.append((q, set(SOURCE_ID.findall(cite.group() if cite else m.group(1)))))
     return quotes
 
 
@@ -110,25 +115,44 @@ def in_text(quote, hay):
     return False
 
 
+def cited_elsewhere(quote, sids, brain_lines):
+    """The ids the brain cites the quote under, when none of them is in sids; None when one fits.
+
+    A brain line with no id, or a quote that only matches across lines, can't be checked, so it passes.
+    """
+    # a cheap filter first: a line can only hold the quote if it holds its first piece
+    first = next((f" {p} " for p in (norm(x) for x in ELLIPSIS.split(quote)) if p), " ")
+    hits = [ids for line, ids in brain_lines if first in f" {line} " and in_text(quote, line)]
+    if not hits or any(not ids or ids & sids for ids in hits):
+        return None
+    return sorted(set().union(*hits))
+
+
 def check(session, brains=BRAINS):
     session = Path(session)
-    brain_text = norm(" ".join(p.read_text(encoding="utf-8", errors="replace") for p in Path(brains).rglob("*.md")))
+    brain_raw = [p.read_text(encoding="utf-8", errors="replace") for p in Path(brains).rglob("*.md")]
+    brain_text = norm(" ".join(brain_raw))
+    brain_lines = [(norm(line), set(SOURCE_ID.findall(line))) for text in brain_raw for line in text.split("\n") if line.strip()]
     session_files = sorted(session.glob("round-*.md")) + [p for p in [session / "verdict.md"] if p.exists()]
     brief = norm((session / "brief.md").read_text(encoding="utf-8")) if (session / "brief.md").exists() else ""
     bad, ok, internal = [], 0, 0
     seen_session = ""
     for f in session_files:
         text = f.read_text(encoding="utf-8", errors="replace")
-        for q in find_quotes(text):
+        for q, sids in find_quotes(text):
             nq = norm(q)
             if len(nq.split()) < 6:
                 continue
             if in_text(q, brain_text):
-                ok += 1
+                other = cited_elsewhere(q, sids, brain_lines)
+                if other:
+                    bad.append((f.name, q, f"the brain cites it as {', '.join(other)}, not {', '.join(sorted(sids))}"))
+                else:
+                    ok += 1
             elif in_text(q, seen_session) or in_text(q, brief):
                 internal += 1
             else:
-                bad.append((f.name, q))
+                bad.append((f.name, q, "not in a brain"))
         seen_session += " " + norm(text)
     return ok, internal, bad
 
@@ -136,8 +160,8 @@ def check(session, brains=BRAINS):
 def main():
     ok, internal, bad = check(sys.argv[1])
     print(f"brain quotes verified: {ok}; quotes of earlier rounds or the brief: {internal}; unverified: {len(bad)}")
-    for name, q in bad:
-        print(f"  UNVERIFIED [{name}] \"{q[:160]}\"")
+    for name, q, why in bad:
+        print(f"  UNVERIFIED [{name}] \"{q[:160]}\" ({why})")
     sys.exit(1 if bad else 0)
 
 

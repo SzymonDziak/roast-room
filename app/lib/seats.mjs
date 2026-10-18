@@ -41,11 +41,13 @@ const norm = (s) =>
     .replace(/(?<![a-z0-9])'|'(?![a-z0-9])/g, " ")
     .replace(/[^a-z0-9' ]+/g, " ").replace(/\s+/g, " ").trim();
 const brainText = new Map();
+const brainLineList = new Map();
 function brainNorm(key) {
   if (!brainText.has(key)) {
     const dir = path.join(BRAINS_DIR, byKey[key].slug);
-    const all = fs.existsSync(dir) ? fs.readdirSync(dir).map((f) => read(path.join(dir, f))).join(" ") : "";
+    const all = fs.existsSync(dir) ? fs.readdirSync(dir).map((f) => read(path.join(dir, f))).join("\n") : "";
     brainText.set(key, norm(all));
+    brainLineList.set(key, all.split("\n").filter((l) => l.trim()).map((l) => ({ text: norm(l), ids: l.match(/S\d{3}/g) || [] })));
   }
   return brainText.get(key);
 }
@@ -107,6 +109,15 @@ function inText(quote, hay) {
  * `context` is what the seat may quote besides its brain: the brief and earlier rounds. A quote found
  * there but not in the brain is marked `context: true` (quoting the founder or a seat, not the expert).
  */
+// The ids the brain cites the quote under, when none of them is sid; null when sid fits. A brain line with
+// no id, or a quote that only matches across lines, can't be checked, so it passes.
+function citedElsewhere(key, quote, sids) {
+  const first = quote.split(ELLIPSIS).map(norm).find(Boolean) || "";
+  const hits = brainLineList.get(key).filter((l) => ` ${l.text} `.includes(` ${first} `) && inText(quote, l.text));
+  if (!hits.length || hits.some((l) => !l.ids.length || l.ids.some((id) => sids.includes(id)))) return null;
+  return [...new Set(hits.flatMap((l) => l.ids))].sort();
+}
+
 export function checkQuotes(key, text, context = "") {
   const out = [];
   const hay = brainNorm(key);
@@ -118,8 +129,13 @@ export function checkQuotes(key, text, context = "") {
       if (quote === null || quote.length < 20 || quote.length > 400) continue;
       const q = norm(quote);
       if (q.split(" ").length < 5) continue;
-      const verified = inText(quote, hay);
-      out.push({ quote, source: m[1], verified, context: !verified && Boolean(ctx) && inText(quote, ctx) });
+      const inBrain = inText(quote, hay);
+      // every id in the citation counts, as in (S090, S028)
+      const cite = line.slice(m.index + 1).match(/^[^\n"“”]{0,40}?[(\[][^()\[\]\n]{0,80}/);
+      const sids = cite ? cite[0].match(/S\d{3}/g) : [m[1]];
+      const citedAs = inBrain ? citedElsewhere(key, quote, sids) : null;
+      const verified = inBrain && !citedAs;
+      out.push({ quote, source: m[1], verified, citedAs, context: !inBrain && Boolean(ctx) && inText(quote, ctx) });
     }
   }
   return out;

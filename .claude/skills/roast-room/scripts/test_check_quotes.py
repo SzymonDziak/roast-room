@@ -12,6 +12,7 @@ BRAIN = """
 - filler - filler - filler - filler - filler - filler - filler - filler - filler - filler - filler - filler - filler - filler - filler - filler - filler - filler - filler - filler - filler - filler - filler - filler - filler - filler - filler - filler - filler - filler - filler - filler - filler - filler - filler - filler - filler - filler - filler - filler - filler - filler - filler - filler - filler - filler - filler - filler - filler - filler - filler - filler - filler - filler - filler - filler - filler - filler - filler - filler 
 - "We can afford to lose money but we can't afford to lose reputation." (S028)
 - "Make something people want, and the rest mostly follows from that." (S092)
+- "An entry that carries no source id at all in the brain."
 - "the biggest mistakes are the ones that actually don't show up they're the mistakes of omission rather than commission" (S028)
 """
 
@@ -54,7 +55,7 @@ class CheckQuotesTest(unittest.TestCase):
     def test_invented_quote_is_flagged(self):
         ok, _, bad = self.run_check(['"Always raise the biggest round you possibly can get." (S011)'])
         self.assertEqual(ok, 0)
-        self.assertEqual(bad, [("round-1.md", "Always raise the biggest round you possibly can get.")])
+        self.assertEqual(bad, [("round-1.md", "Always raise the biggest round you possibly can get.", "not in a brain")])
 
     def test_quote_of_earlier_round_is_internal(self):
         r1 = "Graham: speed beats everything when you have no users at all yet."
@@ -81,7 +82,7 @@ class CheckQuotesTest(unittest.TestCase):
 
     def test_nested_quote_report_shows_whole_quote(self):
         _, _, bad = self.run_check(['"Stick with big, "easy" decisions and invented stuff after it." (S090)'])
-        self.assertEqual(bad, [("round-1.md", 'Stick with big, "easy" decisions and invented stuff after it.')])
+        self.assertEqual(bad, [("round-1.md", 'Stick with big, "easy" decisions and invented stuff after it.', "not in a brain")])
 
     def test_labelled_source_id(self):
         ok, _, bad = self.run_check(['A lead magnet is "Make something people want, and the rest mostly follows from that." (Essays, S092) D is built on it, "and this" too.'])
@@ -123,6 +124,20 @@ class CheckQuotesTest(unittest.TestCase):
     def test_ellipsis_piece_must_be_whole_words(self):
         _, _, bad = self.run_check(['"The biggest mis... the mistakes of omission rather than commission" (S028)'])
         self.assertEqual(len(bad), 1)
+
+    def test_real_quote_with_the_wrong_source_id_is_flagged(self):
+        ok, _, bad = self.run_check(['"We can afford to lose money but we can\'t afford to lose reputation." (S090)'])
+        self.assertEqual(ok, 0)
+        self.assertEqual(bad[0][2], "the brain cites it as S028, not S090")
+
+    def test_any_id_in_a_multi_id_citation_counts(self):
+        for cite in ["(S090, S028)", "(S028, S090)", "[S090; S028]", "(S028 and S090)"]:
+            ok, _, bad = self.run_check([f'"Stick with big, “easy” decisions and eschew activity." {cite}'])
+            self.assertEqual((ok, bad), (1, []), cite)
+
+    def test_brain_line_without_an_id_does_not_block_a_quote(self):
+        ok, _, bad = self.run_check(['"An entry that carries no source id at all in the brain." (S050)'])
+        self.assertEqual((ok, bad), (1, []))
 
 
 if __name__ == "__main__":
