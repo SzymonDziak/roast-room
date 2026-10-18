@@ -99,8 +99,12 @@ class CheckQuotesTest(unittest.TestCase):
         self.assertEqual(len(bad), 1)
 
     def test_short_quotes_are_skipped(self):
-        ok, internal, bad = self.run_check(['"Day 2 is stasis, friends." (S064)'])
+        ok, internal, bad = self.run_check(['"Customers are always discontent." (S064)'])
         self.assertEqual((ok, internal, bad), (0, 0, []))
+
+    def test_five_word_invented_quote_is_flagged(self):
+        _, _, bad = self.run_check(['"$450 credited toward the build" (S113)'])
+        self.assertEqual(len(bad), 1)
 
     def test_quote_shortened_with_ellipsis_verifies(self):
         for mark in ["...", "…", " [...] "]:
